@@ -7,6 +7,7 @@ import 'services/product_service.dart';
 import 'services/auth_service.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
+import 'services/realtime_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/shop_screen.dart';
@@ -17,6 +18,17 @@ import 'screens/profile_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SupabaseConfig.initialize();
+
+  // Auto-manage Realtime subscriptions on every auth state change.
+  SupabaseConfig.client.auth.onAuthStateChange.listen((data) {
+    final user = data.session?.user;
+    if (user != null) {
+      RealtimeService.instance.start(userId: user.id);
+    } else {
+      RealtimeService.instance.stop();
+    }
+  });
+
   runApp(const TrafordApp());
 }
 
@@ -33,6 +45,7 @@ class TrafordApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OrderService()),
         ChangeNotifierProvider(create: (_) => LocationService()),
         ChangeNotifierProvider(create: (_) => NotificationService()),
+        ChangeNotifierProvider.value(value: RealtimeService.instance),
       ],
       child: MaterialApp(
         title: 'Traford Farm Fresh',
@@ -110,6 +123,11 @@ class _AppInitializerState extends State<AppInitializer> {
         // Fire-and-forget: load orders and notifications in background
         _loadSecondaryServicesInBackground(authService.userId!);
       }
+
+      // === PHASE 3: Start Supabase Realtime subscriptions ===
+      // Only when a real Supabase Auth user is signed in (UUID).
+      // Legacy guest sessions skip this and will reconnect after a real sign-in.
+      _startRealtimeIfPossible();
     } catch (e) {
       if (mounted) {
         setState(() => _error = 'Failed to connect to server. Please check your internet connection.');
@@ -131,6 +149,19 @@ class _AppInitializerState extends State<AppInitializer> {
           Provider.of<NotificationService>(context, listen: false);
       notifService.loadNotifications(userId).catchError((_) {});
     } catch (_) {}
+  }
+
+  /// Start Realtime subscriptions if a Supabase Auth UUID is available.
+  /// Falls back to no-op for legacy phone/guest sessions.
+  void _startRealtimeIfPossible() {
+    try {
+      final authUser = SupabaseConfig.client.auth.currentUser;
+      if (authUser != null) {
+        RealtimeService.instance.start(userId: authUser.id);
+      }
+    } catch (e) {
+      debugPrint('Realtime start skipped: $e');
+    }
   }
 
   @override
