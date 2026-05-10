@@ -15,6 +15,24 @@ class AuthService extends ChangeNotifier {
   String? get userName => _profile?['full_name'] as String?;
   String? get userPhone => _profile?['phone'] as String?;
 
+  // ---- Phase 5: role + JWT access for the new public API ----
+
+  /// Role string from the profiles table — used to gate the Agro Shop tab.
+  /// Possible values: 'customer', 'field_staff', 'admin_staff', 'admin',
+  /// 'finance', 'director'. Defaults to 'customer' when unknown.
+  String get role => (_profile?['role'] as String?) ?? 'customer';
+
+  /// True if the user can see the staff-only Agro Inputs shop.
+  bool get canShopAgro =>
+      const {'field_staff', 'admin_staff', 'admin', 'finance', 'director'}
+          .contains(role);
+
+  /// Current Supabase JWT access token (for /agro-products + /agro-orders).
+  /// Returns null when there is no Supabase auth session (e.g. legacy phone-
+  /// only login). The Agro shop will refuse to load if this is null.
+  String? get accessToken =>
+      SupabaseConfig.client.auth.currentSession?.accessToken;
+
   /// Initialize auth - no local storage, just reset state
   Future<void> initialize() async {
     // No Hive restoration - state starts fresh

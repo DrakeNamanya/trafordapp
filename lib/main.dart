@@ -7,12 +7,14 @@ import 'services/product_service.dart';
 import 'services/auth_service.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
+import 'services/agro_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/agro_shop_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +35,7 @@ class TrafordApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OrderService()),
         ChangeNotifierProvider(create: (_) => LocationService()),
         ChangeNotifierProvider(create: (_) => NotificationService()),
+        ChangeNotifierProvider(create: (_) => AgroService()),
       ],
       child: MaterialApp(
         title: 'Traford Farm Fresh',
@@ -227,21 +230,6 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  // Pre-built screens list for instant tab switching (no rebuilds)
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _screens = [
-      HomeScreen(onNavigate: _onNavigate),
-      ShopScreen(onNavigate: _onNavigate),
-      CartScreen(onNavigate: _onNavigate),
-      OrdersScreen(onNavigate: _onNavigate),
-      ProfileScreen(onNavigate: _onNavigate),
-    ];
-  }
-
   void _onNavigate(int index) {
     setState(() => _currentIndex = index);
   }
@@ -250,74 +238,100 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final cart = context.watch<CartService>();
     final notifService = context.watch<NotificationService>();
+    final auth = context.watch<AuthService>();
+
+    // Build the screens list dynamically.
+    // Order: Home, Shop, [Agro], Cart, Orders, Profile
+    // Agro tab is only inserted for staff with canShopAgro == true.
+    final screens = <Widget>[
+      HomeScreen(onNavigate: _onNavigate),
+      ShopScreen(onNavigate: _onNavigate),
+      if (auth.canShopAgro) const AgroShopScreen(),
+      CartScreen(onNavigate: _onNavigate),
+      OrdersScreen(onNavigate: _onNavigate),
+      ProfileScreen(onNavigate: _onNavigate),
+    ];
+
+    final navItems = <BottomNavigationBarItem>[
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.home_outlined),
+        activeIcon: Icon(Icons.home),
+        label: 'Home',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.store_outlined),
+        activeIcon: Icon(Icons.store),
+        label: 'Shop',
+      ),
+      if (auth.canShopAgro)
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.agriculture_outlined),
+          activeIcon: Icon(Icons.agriculture),
+          label: 'Agro',
+        ),
+      BottomNavigationBarItem(
+        icon: Badge(
+          isLabelVisible: cart.itemCount > 0,
+          label: Text(
+            '${cart.itemCount}',
+            style: const TextStyle(fontSize: 10, color: Colors.white),
+          ),
+          backgroundColor: Colors.red,
+          child: const Icon(Icons.shopping_cart_outlined),
+        ),
+        activeIcon: Badge(
+          isLabelVisible: cart.itemCount > 0,
+          label: Text(
+            '${cart.itemCount}',
+            style: const TextStyle(fontSize: 10, color: Colors.white),
+          ),
+          backgroundColor: Colors.red,
+          child: const Icon(Icons.shopping_cart),
+        ),
+        label: 'Cart',
+      ),
+      BottomNavigationBarItem(
+        icon: Badge(
+          isLabelVisible: notifService.unreadCount > 0,
+          label: Text(
+            '${notifService.unreadCount}',
+            style: const TextStyle(fontSize: 10, color: Colors.white),
+          ),
+          backgroundColor: AppTheme.trafordOrange,
+          child: const Icon(Icons.receipt_long_outlined),
+        ),
+        activeIcon: Badge(
+          isLabelVisible: notifService.unreadCount > 0,
+          label: Text(
+            '${notifService.unreadCount}',
+            style: const TextStyle(fontSize: 10, color: Colors.white),
+          ),
+          backgroundColor: AppTheme.trafordOrange,
+          child: const Icon(Icons.receipt_long),
+        ),
+        label: 'Orders',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.person_outline),
+        activeIcon: Icon(Icons.person),
+        label: 'Profile',
+      ),
+    ];
+
+    // Clamp the current index in case the role changed and the list shrank.
+    final safeIndex =
+        _currentIndex >= screens.length ? 0 : _currentIndex;
 
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+        index: safeIndex,
+        children: screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        currentIndex: safeIndex,
         onTap: _onNavigate,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.store_outlined),
-            activeIcon: Icon(Icons.store),
-            label: 'Shop',
-          ),
-          BottomNavigationBarItem(
-            icon: Badge(
-              isLabelVisible: cart.itemCount > 0,
-              label: Text(
-                '${cart.itemCount}',
-                style: const TextStyle(fontSize: 10, color: Colors.white),
-              ),
-              backgroundColor: Colors.red,
-              child: const Icon(Icons.shopping_cart_outlined),
-            ),
-            activeIcon: Badge(
-              isLabelVisible: cart.itemCount > 0,
-              label: Text(
-                '${cart.itemCount}',
-                style: const TextStyle(fontSize: 10, color: Colors.white),
-              ),
-              backgroundColor: Colors.red,
-              child: const Icon(Icons.shopping_cart),
-            ),
-            label: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Badge(
-              isLabelVisible: notifService.unreadCount > 0,
-              label: Text(
-                '${notifService.unreadCount}',
-                style: const TextStyle(fontSize: 10, color: Colors.white),
-              ),
-              backgroundColor: AppTheme.trafordOrange,
-              child: const Icon(Icons.receipt_long_outlined),
-            ),
-            activeIcon: Badge(
-              isLabelVisible: notifService.unreadCount > 0,
-              label: Text(
-                '${notifService.unreadCount}',
-                style: const TextStyle(fontSize: 10, color: Colors.white),
-              ),
-              backgroundColor: AppTheme.trafordOrange,
-              child: const Icon(Icons.receipt_long),
-            ),
-            label: 'Orders',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
+        items: navItems,
       ),
     );
   }
