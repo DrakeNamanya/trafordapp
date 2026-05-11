@@ -61,3 +61,7 @@ server.log
 # Firebase / sensitive
 google-services.json.bak
 firebase-admin-sdk*.json
+
+# Android signing — never commit secrets
+android/key.properties
+android/release-key.jks

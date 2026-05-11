@@ -54,6 +54,25 @@ class Product {
       unit: json['unit'] as String? ?? 'piece',
     );
   }
+
+  /// Serialise the product to a JSON-safe map. Used by CartService to persist
+  /// the cart locally via SharedPreferences (works for both guest and
+  /// signed-in users).
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'slug': slug,
+        'description': description,
+        'category_id': categoryId,
+        'price': price,
+        'original_price': originalPrice,
+        'image': image,
+        'stock': stock,
+        'featured': featured,
+        'rating': rating,
+        'review_count': reviewCount,
+        'unit': unit,
+      };
 }
 
 class Category {
@@ -133,6 +152,26 @@ class CartItem {
         rating: (productData['rating'] as num?)?.toDouble() ?? 0,
         reviewCount: productData['review_count'] as int? ?? 0,
       ),
+      quantity: json['quantity'] as int? ?? 1,
+    );
+  }
+
+  /// Local-cart serialisation: stores the full product snapshot so the cart
+  /// survives an app restart even when offline / not signed in.
+  Map<String, dynamic> toLocalJson() => {
+        'id': id,
+        'product_id': productId,
+        'quantity': quantity,
+        'product': product.toJson(),
+      };
+
+  /// Inverse of [toLocalJson].
+  factory CartItem.fromLocalJson(Map<String, dynamic> json) {
+    final p = json['product'] as Map<String, dynamic>? ?? {};
+    return CartItem(
+      id: json['id'] as int? ?? 0,
+      productId: json['product_id'] as int,
+      product: Product.fromJson(p),
       quantity: json['quantity'] as int? ?? 1,
     );
   }

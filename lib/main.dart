@@ -74,6 +74,14 @@ class _AppInitializerState extends State<AppInitializer> {
       final locationService =
           Provider.of<LocationService>(context, listen: false);
       final authService = Provider.of<AuthService>(context, listen: false);
+      final cartService = Provider.of<CartService>(context, listen: false);
+
+      // Restore the locally-persisted cart FIRST so it appears immediately,
+      // before any network calls finish. This is what keeps guest carts
+      // alive across app restarts.
+      await cartService
+          .hydrateFromLocal()
+          .catchError((_) {});
 
       // === PHASE 1: Load critical data in PARALLEL for speed ===
       // Products + categories + auth + location all load simultaneously
