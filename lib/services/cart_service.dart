@@ -70,13 +70,21 @@ class CartService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called by AuthService once we know who the user is. Loads any
-  /// server-side cart and merges it with whatever was bought as a guest.
+  /// The legacy `users.id = 2` shared "guest" row. We deliberately do NOT
+  /// sync that account's server cart_items because they are shared across
+  /// every guest device — pulling them would corrupt this device's cart.
+  static const int _kSharedGuestUserId = 2;
+
+  /// Called by AuthService once we know who the user is. For real users we
+  /// merge the server cart in; for the shared guest sentinel we keep the
+  /// device-local cart authoritative.
   void setUserId(int id) {
     _userId = id;
-    // Pull server cart in the background, then merge into the local one.
-    _loadServerCartAndMerge();
-    loadWishlist();
+    if (id != _kSharedGuestUserId) {
+      // Real user: pull server cart in the background and merge.
+      _loadServerCartAndMerge();
+      loadWishlist();
+    }
   }
 
   /// Clears the user binding (sign-out). Local cart is preserved on the
@@ -164,6 +172,11 @@ class CartService extends ChangeNotifier {
     }
   }
 
+  /// True only when this device is bound to a real (non-shared) user that
+  /// owns a private server-side cart we should mirror to.
+  bool get _shouldMirrorToServer =>
+      _userId != null && _userId != _kSharedGuestUserId;
+
   Future<void> addToCart(Product product, {int quantity = 1}) async {
     // 1) Update local state immediately so the UI reflects the change.
     final idx = _items.indexWhere((it) => it.productId == product.id);
@@ -180,8 +193,8 @@ class CartService extends ChangeNotifier {
     await _persistLocal();
     notifyListeners();
 
-    // 2) Best-effort mirror to server when signed in.
-    if (_userId != null) {
+    // 2) Best-effort mirror to server when signed in as a real user.
+    if (_shouldMirrorToServer) {
       try {
         final existing = await SupabaseConfig.client
             .from('cart_items')
@@ -218,7 +231,7 @@ class CartService extends ChangeNotifier {
       await _persistLocal();
       notifyListeners();
     }
-    if (_userId != null && cartItemId > 0) {
+    if (_shouldMirrorToServer && cartItemId > 0) {
       try {
         await SupabaseConfig.client
             .from('cart_items')
@@ -233,7 +246,7 @@ class CartService extends ChangeNotifier {
     _items.removeWhere((it) => it.id == cartItemId);
     await _persistLocal();
     notifyListeners();
-    if (_userId != null && cartItemId > 0) {
+    if (_shouldMirrorToServer && cartItemId > 0) {
       try {
         await SupabaseConfig.client
             .from('cart_items')
@@ -245,12 +258,13 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  /// Full clear — wipes both local and (if signed in) server cart_items.
+  /// Full clear — wipes both local and (if signed in as a real user)
+  /// server cart_items.
   Future<void> clearCart() async {
     _items = [];
     await _persistLocal();
     notifyListeners();
-    if (_userId != null) {
+    if (_shouldMirrorToServer) {
       try {
         await SupabaseConfig.client
             .from('cart_items')
