@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/cart_service.dart';
-import '../services/order_service.dart';
 import '../services/notification_service.dart';
 import '../services/location_service.dart';
+import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
-import 'login_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -18,6 +17,8 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   String _paymentMethod = 'cash';
@@ -34,115 +35,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
     _addressController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
 
-  /// Check if user has a complete profile. If not, redirect to login/register.
+  /// Phase 5: guest checkout is allowed by default. We pre-fill the form
+  /// from any existing profile data, but no login is required — the server
+  /// will create an auth user + profile automatically based on the phone
+  /// (or synthesized email if none is supplied).
   void _checkUserProfile() {
     final auth = Provider.of<AuthService>(context, listen: false);
-
-    if (!auth.hasProfile) {
-      // User doesn't have a complete profile -> show login/register
-      _showAccountRequiredDialog();
-    } else {
-      // Pre-fill phone from profile
-      final locService = Provider.of<LocationService>(context, listen: false);
-      final profile = auth.profile;
-      if (profile != null) {
-        _phoneController.text = profile['phone'] ?? '';
-        final districtName = profile['district_name'] ??
-            locService.districtName(profile['district_id'] as int?) ??
-            '';
-        final subcountyName = profile['subcounty_name'] ??
-            locService.subcountyName(profile['subcounty_id'] as int?) ??
-            '';
-        final parishName = profile['parish_name'] ??
-            locService.parishName(profile['parish_id'] as int?) ??
-            '';
-        if (districtName.isNotEmpty) {
-          _addressController.text = '$parishName, $subcountyName, $districtName';
-        }
+    final locService = Provider.of<LocationService>(context, listen: false);
+    final profile = auth.profile;
+    if (profile != null) {
+      _nameController.text = (profile['full_name'] as String?) ?? '';
+      _phoneController.text = (profile['phone'] as String?) ?? '';
+      _emailController.text = (profile['email'] as String?) ?? '';
+      final districtName = profile['district_name'] ??
+          locService.districtName(profile['district_id'] as int?) ??
+          '';
+      final subcountyName = profile['subcounty_name'] ??
+          locService.subcountyName(profile['subcounty_id'] as int?) ??
+          '';
+      final parishName = profile['parish_name'] ??
+          locService.parishName(profile['parish_id'] as int?) ??
+          '';
+      if (districtName.isNotEmpty) {
+        _addressController.text = '$parishName, $subcountyName, $districtName';
       }
-      setState(() => _checkedAuth = true);
     }
-  }
-
-  void _showAccountRequiredDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: AppTheme.softLeaf,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.person_outline,
-                color: AppTheme.trafordOrange,
-                size: 48,
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Account Required',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'To complete your order, you need to sign in or create an account.\n\nThis helps us deliver your fresh products to you!',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textMuted, height: 1.4),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _openLoginScreen();
-                },
-                child: const Text('Sign In / Create Account'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context); // Go back to cart
-              },
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openLoginScreen() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(
-          onSuccess: () {
-            // After successful login/register, re-check profile
-            if (mounted) {
-              setState(() => _checkedAuth = false);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _checkUserProfile();
-              });
-            }
-          },
-        ),
-      ),
-    );
+    setState(() => _checkedAuth = true);
   }
 
   @override
@@ -226,6 +151,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           child: Column(
                             children: [
                               TextFormField(
+                                controller: _nameController,
+                                textCapitalization: TextCapitalization.words,
+                                decoration: const InputDecoration(
+                                  labelText: 'Full Name',
+                                  hintText: 'e.g. Jane Doe',
+                                  prefixIcon: Icon(Icons.person_outline),
+                                ),
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Full name is required'
+                                    : null,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email (optional)',
+                                  hintText: 'you@example.com',
+                                  prefixIcon: Icon(Icons.email_outlined),
+                                ),
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty) {
+                                    return null; // optional
+                                  }
+                                  final email = v.trim();
+                                  final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                      .hasMatch(email);
+                                  return ok ? null : 'Enter a valid email';
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
                                 controller: _addressController,
                                 decoration: const InputDecoration(
                                   labelText: 'Delivery Address',
@@ -261,7 +218,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   hintText: '256XXXXXXXXX',
                                   prefixIcon: Icon(Icons.phone),
                                 ),
-                                validator: (v) => v == null || v.isEmpty
+                                validator: (v) => v == null || v.trim().isEmpty
                                     ? 'Phone is required'
                                     : null,
                               ),
@@ -499,58 +456,75 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _isProcessing = true);
 
     final cart = context.read<CartService>();
-    final orderService = context.read<OrderService>();
     final auth = context.read<AuthService>();
     final notifService = context.read<NotificationService>();
 
     try {
-      final order = await orderService.placeOrder(
-        userId: auth.userId ?? cart.userId!,
-        items: cart.items,
-        subtotal: cart.subtotal,
-        tax: cart.tax,
-        total: cart.total,
-        shippingAddress: _addressController.text,
-        shippingCity: 'Uganda',
-        shippingPhone: _phoneController.text,
-        paymentMethod: _paymentMethod,
+      // Build the items payload from the cart for the public guest-checkout
+      // endpoint. Server will compute totals, generate TFF-YYYY-NNNNNN, and
+      // create the auth.users + profile shell if no account exists.
+      final items = cart.items
+          .map((it) => {
+                'product_id': it.productId,
+                'quantity': it.quantity,
+              })
+          .toList();
+
+      final emailText = _emailController.text.trim();
+      final response = await ApiClient.guestCheckout(
+        fullName: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: emailText.isEmpty ? null : emailText,
+        deliveryAddress: _addressController.text.trim(),
+        deliveryCity: 'Uganda',
+        notes: 'Payment method: $_paymentMethod',
+        items: items,
       );
 
-      // Clear cart locally after successful order
-      await cart.loadCart();
+      // Server has accepted the order. Clear the cart:
+      //  - For logged-in users we drop server-side cart_items.
+      //  - For guests (no userId) we just clear local state.
+      if (cart.userId != null) {
+        await cart.clearCart();
+      } else {
+        cart.clearCartLocal();
+      }
 
-      // Reload notifications
+      // Refresh notifications for logged-in users (guests have no userId).
       if (auth.userId != null) {
         await notifService.loadNotifications(auth.userId!);
       }
 
       if (!mounted) return;
-
       setState(() => _isProcessing = false);
 
-      if (order != null) {
-        _showSuccessDialog(order.orderNumber);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to place order. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showSuccessDialog(response);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: $e'),
+          content: Text('Could not place order: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  void _showSuccessDialog(String orderNumber) {
+  void _showSuccessDialog(Map<String, dynamic> response) {
+    // The public API returns { order: {...} } OR the order fields at the top
+    // level — accept either shape.
+    final order = (response['order'] is Map<String, dynamic>)
+          ? response['order'] as Map<String, dynamic>
+          : response;
+
+    final orderNumber = (order['order_number'] as String?) ?? 'TFF-PENDING';
+    final status = (order['status'] as String?) ?? 'pending';
+    final totalRaw = order['total'] ?? order['total_amount'];
+    final double totalAmount = totalRaw is num
+        ? totalRaw.toDouble()
+        : double.tryParse('${totalRaw ?? ''}') ?? 0.0;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -579,11 +553,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Your order $orderNumber has been sent to admin for processing.\n\nYou will receive notifications on the status of your order!',
+            const SizedBox(height: 12),
+            // Highlighted order number pill
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.softLeaf,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: AppTheme.trafordOrange, width: 1),
+              ),
+              child: Text(
+                orderNumber,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.trafordOrange,
+                  letterSpacing: 1.1,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Total + status mini row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'UGX ${formatUGX(totalAmount)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.trafordOrange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    status.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.trafordOrange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              "Thank you! We've received your order and will be in touch shortly with delivery details.",
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textMuted, height: 1.4),
+              style: TextStyle(color: AppTheme.textMuted, height: 1.4),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -593,7 +619,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Navigator.pop(ctx);
                   Navigator.pop(context);
                 },
-                child: const Text('View Orders'),
+                child: const Text('Done'),
               ),
             ),
           ],

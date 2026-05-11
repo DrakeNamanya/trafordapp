@@ -35,6 +35,8 @@ class Product {
       hasDiscount ? ((originalPrice! - price) / originalPrice! * 100) : 0;
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // Accept BOTH the legacy schema (image, featured) and the new public
+    // API schema (image_url, is_featured) so we work with either backend.
     return Product(
       id: json['id'] as int,
       name: json['name'] as String? ?? 'Product',
@@ -43,9 +45,10 @@ class Product {
       categoryId: json['category_id'] as int? ?? 0,
       price: (json['price'] as num?)?.toDouble() ?? 0,
       originalPrice: (json['original_price'] as num?)?.toDouble(),
-      image: json['image'] as String?,
+      image: (json['image_url'] as String?) ?? (json['image'] as String?),
       stock: json['stock'] as int? ?? 50,
-      featured: json['featured'] as bool? ?? false,
+      featured:
+          (json['is_featured'] as bool?) ?? (json['featured'] as bool?) ?? false,
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
       reviewCount: json['review_count'] as int? ?? 0,
       unit: json['unit'] as String? ?? 'piece',
@@ -92,7 +95,7 @@ class Category {
       slug: json['slug'] as String? ?? '',
       description: json['description'] as String?,
       parentId: json['parent_id'] as int?,
-      image: json['image'] as String?,
+      image: (json['image_url'] as String?) ?? (json['image'] as String?),
     );
   }
 }

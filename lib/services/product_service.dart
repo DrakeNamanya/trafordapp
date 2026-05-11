@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'supabase_config.dart';
+import 'api_client.dart';
 import '../models/product.dart';
 
 class ProductService extends ChangeNotifier {
@@ -53,17 +54,29 @@ class ProductService extends ChangeNotifier {
 
   Future<void> loadCategories() async {
     try {
-      final response = await SupabaseConfig.client
-          .from('categories')
-          .select()
-          .order('name');
-
-      _categories = (response as List)
-          .map((json) => Category.fromJson(json as Map<String, dynamic>))
-          .toList();
+      // Phase 5: use the new /api/public/categories endpoint instead of
+      // hitting Supabase directly. This applies the audience filter
+      // (Farm Fresh categories only — agro categories are hidden from
+      // public customer views).
+      final raw = await ApiClient.getCategories();
+      _categories = raw.map((j) => Category.fromJson(j)).toList();
       notifyListeners();
     } catch (e) {
-      debugPrint('Error loading categories: $e');
+      debugPrint('Error loading categories (API): $e');
+      // Fallback to legacy Supabase direct read so the app stays usable
+      // if the public API is temporarily unreachable.
+      try {
+        final response = await SupabaseConfig.client
+            .from('categories')
+            .select()
+            .order('name');
+        _categories = (response as List)
+            .map((json) => Category.fromJson(json as Map<String, dynamic>))
+            .toList();
+        notifyListeners();
+      } catch (e2) {
+        debugPrint('Fallback categories load also failed: $e2');
+      }
     }
   }
 
@@ -73,22 +86,30 @@ class ProductService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await SupabaseConfig.client
-          .from('products')
-          .select()
-          .order('name');
-
-      _allProducts = (response as List)
-          .map((json) => Product.fromJson(json as Map<String, dynamic>))
-          .toList();
-
+      // Phase 5: pull the public Farm Fresh catalogue from the API.
+      // Server returns audience='public' products only — agro inputs are
+      // hidden behind the staff-only /agro-products endpoint.
+      final raw = await ApiClient.getProducts(limit: 200);
+      _allProducts = raw.map((j) => Product.fromJson(j)).toList();
       _featuredProducts = _allProducts.where((p) => p.featured).toList();
-
-      // Clear category cache when products are reloaded
       _categoryCache.clear();
     } catch (e) {
-      _error = 'Failed to load products: $e';
-      debugPrint('Error loading products: $e');
+      debugPrint('Error loading products (API): $e');
+      // Fallback: legacy Supabase direct read
+      try {
+        final response = await SupabaseConfig.client
+            .from('products')
+            .select()
+            .order('name');
+        _allProducts = (response as List)
+            .map((json) => Product.fromJson(json as Map<String, dynamic>))
+            .toList();
+        _featuredProducts = _allProducts.where((p) => p.featured).toList();
+        _categoryCache.clear();
+      } catch (e2) {
+        _error = 'Failed to load products: $e2';
+        debugPrint('Fallback products load also failed: $e2');
+      }
     }
 
     _isLoading = false;

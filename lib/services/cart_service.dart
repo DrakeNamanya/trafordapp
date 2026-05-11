@@ -127,6 +127,15 @@ class CartService extends ChangeNotifier {
     }
   }
 
+  /// Local-only clear (no server round-trip).
+  /// Used after a successful guest checkout where the cart was never persisted
+  /// against a user_id (guest sessions). Also safe to call after the server has
+  /// already drained the cart on its side.
+  void clearCartLocal() {
+    _items = [];
+    notifyListeners();
+  }
+
   // ---- WISHLIST OPERATIONS ----
 
   Future<void> loadWishlist() async {
