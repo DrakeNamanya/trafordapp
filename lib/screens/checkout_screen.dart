@@ -24,8 +24,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   String _paymentMethod = 'cash';
+  String _deliveryMethod = 'delivery'; // 'delivery' | 'pickup'
   bool _isProcessing = false;
   bool _checkedAuth = false;
+
+  // Keep this in sync with app_settings.default_shipping_fee_ugx on the server.
+  static const double _kHomeDeliveryFee = 5000;
+  static const String _kPickupAddress =
+      'Pickup at Traford outlet (Kikaaya, Kyebando, Kawempe)';
 
   @override
   void initState() {
@@ -210,15 +216,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               const SizedBox(height: 16),
                               TextFormField(
                                 controller: _addressController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Delivery Address',
-                                  hintText: 'Enter your delivery address',
-                                  prefixIcon:
-                                      Icon(Icons.location_on_outlined),
+                                enabled: _deliveryMethod == 'delivery',
+                                decoration: InputDecoration(
+                                  labelText: _deliveryMethod == 'pickup'
+                                      ? 'Delivery Address (not required for pickup)'
+                                      : 'Delivery Address',
+                                  hintText: _deliveryMethod == 'pickup'
+                                      ? _kPickupAddress
+                                      : 'Enter your delivery address',
+                                  prefixIcon: const Icon(
+                                      Icons.location_on_outlined),
                                 ),
-                                validator: (v) => v == null || v.isEmpty
-                                    ? 'Address is required'
-                                    : null,
+                                validator: (v) {
+                                  if (_deliveryMethod == 'pickup') {
+                                    return null;
+                                  }
+                                  return (v == null || v.trim().isEmpty)
+                                      ? 'Address is required'
+                                      : null;
+                                },
                               ),
                               const SizedBox(height: 16),
                               Row(
@@ -247,6 +263,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 validator: (v) => v == null || v.trim().isEmpty
                                     ? 'Phone is required'
                                     : null,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Delivery Method
+                        _sectionTitle('Delivery Method'),
+                        const SizedBox(height: 12),
+                        _buildCard(
+                          child: Column(
+                            children: [
+                              _deliveryOption(
+                                'delivery',
+                                'Home Delivery',
+                                Icons.local_shipping,
+                                'We bring it to your address',
+                                'UGX ${formatUGX(_kHomeDeliveryFee)}',
+                              ),
+                              const Divider(height: 1),
+                              _deliveryOption(
+                                'pickup',
+                                'Pickup at Outlet',
+                                Icons.storefront,
+                                'Collect at Kikaaya, Kyebando, Kawempe',
+                                'Free',
                               ),
                             ],
                           ),
@@ -323,6 +366,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               _totalRow('Subtotal', cart.subtotal),
                               const SizedBox(height: 6),
                               _totalRow('Tax (10%)', cart.tax),
+                              const SizedBox(height: 6),
+                              _shippingRow(),
                               const Divider(height: 20),
                               Row(
                                 mainAxisAlignment:
@@ -336,7 +381,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                     ),
                                   ),
                                   Text(
-                                    'UGX ${formatUGX(cart.total)}',
+                                    'UGX ${formatUGX(cart.total + _shippingFee())}',
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
@@ -462,6 +507,94 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  double _shippingFee() =>
+      _deliveryMethod == 'pickup' ? 0.0 : _kHomeDeliveryFee;
+
+  Widget _shippingRow() {
+    final fee = _shippingFee();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          _deliveryMethod == 'pickup'
+              ? 'Shipping (Pickup)'
+              : 'Shipping (Home Delivery)',
+          style: const TextStyle(fontSize: 14, color: AppTheme.textMuted),
+        ),
+        Text(
+          fee == 0 ? 'Free' : 'UGX ${formatUGX(fee)}',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+
+  Widget _deliveryOption(
+      String value, String title, IconData icon, String subtitle, String trailing) {
+    final selected = _deliveryMethod == value;
+    return InkWell(
+      onTap: () => setState(() => _deliveryMethod = value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color:
+                      selected ? AppTheme.trafordOrange : AppTheme.textMuted,
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? Center(
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.trafordOrange,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Icon(icon, color: AppTheme.trafordOrange, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              trailing,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: trailing == 'Free'
+                    ? AppTheme.growthGreen
+                    : AppTheme.trafordOrange,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _totalRow(String label, double amount) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -499,7 +632,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final emailText = _emailController.text.trim();
       final fullName = _nameController.text.trim();
       final phone = _phoneController.text.trim();
-      final deliveryAddress = _addressController.text.trim();
+      final typedAddress = _addressController.text.trim();
+      final deliveryAddress = _deliveryMethod == 'pickup'
+          ? (typedAddress.isEmpty ? _kPickupAddress : typedAddress)
+          : typedAddress;
 
       final response = await ApiClient.guestCheckout(
         fullName: fullName,
@@ -509,6 +645,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryCity: 'Uganda',
         notes: 'Payment method: $_paymentMethod',
         items: items,
+        deliveryMethod: _deliveryMethod,
       );
 
       // Save delivery details locally so the form auto-fills next time.

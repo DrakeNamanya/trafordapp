@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_config.dart';
+import 'api_client.dart';
 import '../models/product.dart';
 
 class OrderService extends ChangeNotifier {
@@ -155,6 +156,70 @@ class OrderService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error recording guest order locally: $e');
+    }
+  }
+
+  /// Re-fetch the public order-by-number record and update the matching
+  /// cached order's status + payment_status. This is the bridge that keeps
+  /// guest customers in sync with the admin portal — guests have no Supabase
+  /// JWT, so they can't query `orders` directly, but the TFF order_number is
+  /// a long random token we expose through `/api/public/orders/by-number/`.
+  Future<bool> refreshOrderStatus(String orderNumber) async {
+    if (orderNumber.isEmpty) return false;
+    try {
+      final response = await ApiClient.getOrderByNumber(orderNumber);
+      // The public endpoint returns the order at the top level (with `items`
+      // and `payments` mixed in). Normalize.
+      final raw = (response['order'] is Map<String, dynamic>)
+          ? response['order'] as Map<String, dynamic>
+          : response;
+      final newStatus = (raw['status'] as String?) ?? '';
+      if (newStatus.isEmpty) return false;
+
+      // Try to infer payment_status from the latest payment row.
+      String? newPaymentStatus;
+      final payments = response['payments'];
+      if (payments is List && payments.isNotEmpty) {
+        final last = payments.last;
+        if (last is Map && last['status'] is String) {
+          newPaymentStatus = last['status'] as String;
+        }
+      }
+
+      var changed = false;
+      for (final o in _orders) {
+        if (o.orderNumber == orderNumber) {
+          if (o.status != newStatus) {
+            o.status = newStatus;
+            changed = true;
+          }
+          if (newPaymentStatus != null &&
+              o.paymentStatus != newPaymentStatus) {
+            o.paymentStatus = newPaymentStatus;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        await _persistLocalOrders(_orders);
+        notifyListeners();
+      }
+      return changed;
+    } catch (e) {
+      debugPrint('refreshOrderStatus failed for $orderNumber: $e');
+      return false;
+    }
+  }
+
+  /// Refresh the status of every cached order. Used for pull-to-refresh on
+  /// the Orders tab.
+  Future<void> refreshAllStatuses() async {
+    if (_orders.isEmpty) return;
+    final numbers =
+        _orders.map((o) => o.orderNumber).where((n) => n.isNotEmpty).toList();
+    for (final n in numbers) {
+      await refreshOrderStatus(n);
     }
   }
 

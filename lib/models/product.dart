@@ -180,7 +180,7 @@ class CartItem {
 class Order {
   final int id;
   final String orderNumber;
-  final String status;
+  String status;
   final double subtotal;
   final double tax;
   final double total;
@@ -188,7 +188,7 @@ class Order {
   final String? shippingCity;
   final String? shippingPhone;
   final String? paymentMethod;
-  final String paymentStatus;
+  String paymentStatus;
   final DateTime createdAt;
   List<OrderItem> items;
 

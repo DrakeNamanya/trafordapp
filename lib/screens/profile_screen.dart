@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/cart_service.dart';
+import '../services/delivery_profile_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
@@ -38,6 +39,11 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildNotLoggedIn(BuildContext context, CartService cart) {
+    final deliveryProfile = context.watch<DeliveryProfileService>();
+    final hasSavedDelivery = (deliveryProfile.fullName?.isNotEmpty ?? false) ||
+        (deliveryProfile.phone?.isNotEmpty ?? false) ||
+        (deliveryProfile.deliveryAddress?.isNotEmpty ?? false);
+
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -74,78 +80,12 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Sign in to manage your orders and profile',
+                  hasSavedDelivery
+                      ? 'You are shopping as a guest'
+                      : 'Shop as a guest — or create an account',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Login / Register buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.cardBorder),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.account_circle_outlined,
-                          size: 56, color: AppTheme.trafordOrange),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Create Your Account',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textDark,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Sign in or create an account to:\n'
-                        '- Place orders for fresh farm products\n'
-                        '- Track your deliveries\n'
-                        '- Get notifications on order status\n'
-                        '- Save your delivery address',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.textMuted,
-                          height: 1.6,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const LoginScreen(),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text('Sign In / Create Account',
-                              style: TextStyle(fontSize: 16)),
-                        ),
-                      ),
-                    ],
+                    color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
               ],
@@ -156,7 +96,7 @@ class ProfileScreen extends StatelessWidget {
 
           // Quick Stats
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
                 _statCard(
@@ -176,10 +116,346 @@ class ProfileScreen extends StatelessWidget {
 
           const SizedBox(height: 16),
 
+          // Saved delivery info (if any)
+          if (hasSavedDelivery)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.cardBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.bookmark,
+                            color: AppTheme.trafordOrange, size: 20),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Saved Delivery Info',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              _confirmClearDeliveryProfile(context),
+                          child: const Text(
+                            'Clear',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'We use this to auto-fill your next checkout on this device.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    const Divider(height: 20),
+                    if ((deliveryProfile.fullName ?? '').isNotEmpty)
+                      _profileRow(
+                          Icons.person, 'Name', deliveryProfile.fullName!),
+                    if ((deliveryProfile.phone ?? '').isNotEmpty)
+                      _profileRow(
+                          Icons.phone, 'Phone', deliveryProfile.phone!),
+                    if ((deliveryProfile.email ?? '').isNotEmpty)
+                      _profileRow(
+                          Icons.email, 'Email', deliveryProfile.email!),
+                    if ((deliveryProfile.deliveryAddress ?? '').isNotEmpty)
+                      _profileRow(Icons.location_on, 'Address',
+                          deliveryProfile.deliveryAddress!),
+                  ],
+                ),
+              ),
+            ),
+
+          if (hasSavedDelivery) const SizedBox(height: 16),
+
+          // Guest vs Account comparison
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Guest checkout vs Creating an account',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'You can shop either way — here\'s what changes.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  _comparisonCard(
+                    icon: Icons.flash_on,
+                    title: 'Guest checkout',
+                    subtitle: 'Just enter your info at checkout',
+                    bullets: const [
+                      ('check', 'Place orders right away, no signup'),
+                      ('check',
+                          'Your delivery details auto-fill next time on this phone'),
+                      ('check', 'Track orders by their TFF number on this device'),
+                      ('close',
+                          'Order history is on this phone only — not on other devices'),
+                      ('close', 'No push notifications when status changes'),
+                    ],
+                    accent: AppTheme.trafordOrange,
+                  ),
+                  const SizedBox(height: 12),
+                  _comparisonCard(
+                    icon: Icons.verified_user,
+                    title: 'Create an account',
+                    subtitle: 'Sign in with phone + password',
+                    bullets: const [
+                      ('check',
+                          'Your orders follow you on any device you sign in on'),
+                      ('check', 'Push notifications when admin updates status'),
+                      ('check', 'Save full profile (location, NIN, etc.)'),
+                      ('check', 'Wishlist sync across devices'),
+                    ],
+                    accent: AppTheme.growthGreen,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.account_circle_outlined),
+                      label: const Text(
+                        'Sign In / Create Account',
+                        style: TextStyle(fontSize: 15),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Staff: Agro Inputs Shop discovery card (Issue 3)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LoginScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border:
+                        Border.all(color: AppTheme.growthGreen, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.softLeaf,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.agriculture,
+                            color: AppTheme.growthGreen, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Staff: Agro Inputs Shop',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.growthGreen,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Field staff & admins can sign in here to access the Agro tab (seeds, fertilizers, tools).',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textMuted,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right,
+                          color: AppTheme.growthGreen),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
           // Contact Info
           _contactCard(),
 
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _comparisonCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required List<(String, String)> bullets,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: accent, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...bullets.map((b) {
+            final isCheck = b.$1 == 'check';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    isCheck ? Icons.check_circle : Icons.remove_circle_outline,
+                    size: 16,
+                    color: isCheck ? AppTheme.growthGreen : Colors.red.shade400,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      b.$2,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClearDeliveryProfile(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Clear saved delivery info?'),
+        content: const Text(
+          'Your next checkout will start with empty fields. This only affects this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final dp = Provider.of<DeliveryProfileService>(context,
+                  listen: false);
+              await dp.clear();
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Saved delivery info cleared'),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
         ],
       ),
     );

@@ -84,6 +84,8 @@ class ApiClient {
     String? deliveryCity,
     String? notes,
     required List<Map<String, dynamic>> items,
+    /// 'delivery' (default — charge shipping fee) or 'pickup' (no shipping fee).
+    String deliveryMethod = 'delivery',
   }) async {
     final body = <String, dynamic>{
       'full_name': fullName,
@@ -93,6 +95,7 @@ class ApiClient {
       if (deliveryCity != null && deliveryCity.isNotEmpty)
         'delivery_city': deliveryCity,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
+      'delivery_method': deliveryMethod,
       'items': items,
     };
 
@@ -109,6 +112,24 @@ class ApiClient {
       throw ApiException(msg, res.statusCode, res.body);
     }
     return Map<String, dynamic>.from(decoded as Map);
+  }
+
+  /// GET /orders/by-number/:order_number — public refresh of a single order
+  /// status. The TFF order number is the customer's only handle.
+  static Future<Map<String, dynamic>> getOrderByNumber(String orderNumber) async {
+    final encoded = Uri.encodeComponent(orderNumber);
+    final res = await http.get(
+      Uri.parse('$baseUrl/orders/by-number/$encoded'),
+      headers: _headers(),
+    );
+    if (res.statusCode == 404) {
+      throw ApiException('Order not found', 404, res.body);
+    }
+    if (res.statusCode != 200) {
+      throw ApiException(
+          'Failed to refresh order status', res.statusCode, res.body);
+    }
+    return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
   }
 
   // ---------------------------------------------------------------------------
