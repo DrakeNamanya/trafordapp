@@ -22,9 +22,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = Provider.of<AuthService>(context, listen: false);
+      // Always reload — even guests (userId=2) need to see their local
+      // order cache. OrderService.loadOrders() returns the local cache for
+      // guests and merges server + local for signed-in users.
+      final userIdToLoad = auth.userId ?? 2;
+      Provider.of<OrderService>(context, listen: false)
+          .loadOrders(userIdToLoad);
       if (auth.userId != null) {
-        Provider.of<OrderService>(context, listen: false)
-            .loadOrders(auth.userId!);
         Provider.of<NotificationService>(context, listen: false)
             .loadNotifications(auth.userId!);
       }
@@ -67,8 +71,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {
+              final userIdToLoad = auth.userId ?? 2;
+              orderService.loadOrders(userIdToLoad);
               if (auth.userId != null) {
-                orderService.loadOrders(auth.userId!);
                 notifService.loadNotifications(auth.userId!);
               }
             },
@@ -108,8 +113,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: () async {
+                    final userIdToLoad = auth.userId ?? 2;
+                    await orderService.loadOrders(userIdToLoad);
                     if (auth.userId != null) {
-                      await orderService.loadOrders(auth.userId!);
                       await notifService.loadNotifications(auth.userId!);
                     }
                   },

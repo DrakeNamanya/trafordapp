@@ -8,6 +8,7 @@ import 'services/auth_service.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/agro_service.dart';
+import 'services/delivery_profile_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/shop_screen.dart';
@@ -36,6 +37,7 @@ class TrafordApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LocationService()),
         ChangeNotifierProvider(create: (_) => NotificationService()),
         ChangeNotifierProvider(create: (_) => AgroService()),
+        ChangeNotifierProvider(create: (_) => DeliveryProfileService()),
       ],
       child: MaterialApp(
         title: 'Traford Farm Fresh',
@@ -82,6 +84,14 @@ class _AppInitializerState extends State<AppInitializer> {
       await cartService
           .hydrateFromLocal()
           .catchError((_) {});
+
+      // Hydrate the saved delivery details (name/phone/email/address) so the
+      // checkout form can auto-fill on returning visits without requiring a
+      // formal sign-up. Capture the provider before any async gap.
+      if (!mounted) return;
+      final deliveryProfile =
+          Provider.of<DeliveryProfileService>(context, listen: false);
+      await deliveryProfile.hydrate().catchError((_) {});
 
       // === PHASE 1: Load critical data in PARALLEL for speed ===
       // Products + categories + auth + location all load simultaneously

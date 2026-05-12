@@ -225,6 +225,50 @@ class Order {
           DateTime.now(),
     );
   }
+
+  /// Serializer for local cache (SharedPreferences). The public guest-checkout
+  /// API returns numeric or string ids — keep them as-is.
+  Map<String, dynamic> toLocalJson() => {
+        'id': id,
+        'order_number': orderNumber,
+        'status': status,
+        'subtotal': subtotal,
+        'tax': tax,
+        'total': total,
+        'shipping_address': shippingAddress,
+        'shipping_city': shippingCity,
+        'shipping_phone': shippingPhone,
+        'payment_method': paymentMethod,
+        'payment_status': paymentStatus,
+        'created_at': createdAt.toIso8601String(),
+        'items': items.map((it) => it.toLocalJson()).toList(),
+      };
+
+  /// Deserializer for orders cached locally (and persisted to SharedPreferences).
+  factory Order.fromLocalJson(Map<String, dynamic> json) {
+    final items = (json['items'] as List?)
+            ?.map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList() ??
+        const <OrderItem>[];
+    return Order(
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.tryParse('${json['id']}') ?? 0,
+      orderNumber: json['order_number'] as String? ?? '',
+      status: json['status'] as String? ?? 'pending',
+      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0,
+      tax: (json['tax'] as num?)?.toDouble() ?? 0,
+      total: (json['total'] as num?)?.toDouble() ?? 0,
+      shippingAddress: json['shipping_address'] as String?,
+      shippingCity: json['shipping_city'] as String?,
+      shippingPhone: json['shipping_phone'] as String?,
+      paymentMethod: json['payment_method'] as String?,
+      paymentStatus: json['payment_status'] as String? ?? 'pending',
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      items: items,
+    );
+  }
 }
 
 class OrderItem {
@@ -242,9 +286,18 @@ class OrderItem {
     return OrderItem(
       productName: json['product_name'] as String? ?? 'Product',
       quantity: json['quantity'] as int? ?? 1,
-      price: (json['price'] as num?)?.toDouble() ?? 0,
+      // Public guest-checkout returns `unit_price`; legacy schema uses `price`.
+      price: (json['price'] as num?)?.toDouble() ??
+          (json['unit_price'] as num?)?.toDouble() ??
+          0,
     );
   }
+
+  Map<String, dynamic> toLocalJson() => {
+        'product_name': productName,
+        'quantity': quantity,
+        'price': price,
+      };
 }
 
 class Review {

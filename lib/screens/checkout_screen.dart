@@ -5,6 +5,8 @@ import '../services/cart_service.dart';
 import '../services/notification_service.dart';
 import '../services/location_service.dart';
 import '../services/api_client.dart';
+import '../services/delivery_profile_service.dart';
+import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
 
@@ -49,7 +51,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void _checkUserProfile() {
     final auth = Provider.of<AuthService>(context, listen: false);
     final locService = Provider.of<LocationService>(context, listen: false);
+    final deliveryProfile =
+        Provider.of<DeliveryProfileService>(context, listen: false);
     final profile = auth.profile;
+
+    // First, populate from any signed-in profile.
     if (profile != null) {
       _nameController.text = (profile['full_name'] as String?) ?? '';
       _phoneController.text = (profile['phone'] as String?) ?? '';
@@ -67,6 +73,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _addressController.text = '$parishName, $subcountyName, $districtName';
       }
     }
+
+    // Then layer on the locally-saved delivery profile so returning guests
+    // don't have to retype their name/phone/email each time.
+    if (_nameController.text.isEmpty &&
+        (deliveryProfile.fullName?.isNotEmpty ?? false)) {
+      _nameController.text = deliveryProfile.fullName!;
+    }
+    if (_phoneController.text.isEmpty &&
+        (deliveryProfile.phone?.isNotEmpty ?? false)) {
+      _phoneController.text = deliveryProfile.phone!;
+    }
+    if (_emailController.text.isEmpty &&
+        (deliveryProfile.email?.isNotEmpty ?? false)) {
+      _emailController.text = deliveryProfile.email!;
+    }
+    if (_addressController.text.isEmpty &&
+        (deliveryProfile.deliveryAddress?.isNotEmpty ?? false)) {
+      _addressController.text = deliveryProfile.deliveryAddress!;
+    }
+
     setState(() => _checkedAuth = true);
   }
 
@@ -144,8 +170,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                           ),
 
-                        // Shipping Information
-                        _sectionTitle('Shipping Information'),
+                        // Delivery Information
+                        _sectionTitle('Delivery Information'),
                         const SizedBox(height: 12),
                         _buildCard(
                           child: Column(
@@ -471,14 +497,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           .toList();
 
       final emailText = _emailController.text.trim();
+      final fullName = _nameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final deliveryAddress = _addressController.text.trim();
+
       final response = await ApiClient.guestCheckout(
-        fullName: _nameController.text.trim(),
-        phone: _phoneController.text.trim(),
+        fullName: fullName,
+        phone: phone,
         email: emailText.isEmpty ? null : emailText,
-        deliveryAddress: _addressController.text.trim(),
+        deliveryAddress: deliveryAddress,
         deliveryCity: 'Uganda',
         notes: 'Payment method: $_paymentMethod',
         items: items,
+      );
+
+      // Save delivery details locally so the form auto-fills next time.
+      if (!mounted) return;
+      final deliveryProfile =
+          Provider.of<DeliveryProfileService>(context, listen: false);
+      await deliveryProfile.save(
+        fullName: fullName,
+        phone: phone,
+        email: emailText.isEmpty ? null : emailText,
+        deliveryAddress: deliveryAddress,
+        deliveryCity: 'Uganda',
+      );
+
+      // Record the order locally so it shows up immediately in the Orders
+      // tab — the order is keyed by the new server-side profile UUID, not
+      // by the guest sentinel userId=2, so a normal Supabase query for
+      // user_id=2 would never find it.
+      if (!mounted) return;
+      final orderService =
+          Provider.of<OrderService>(context, listen: false);
+      await orderService.recordGuestOrder(
+        response: response,
+        cartItems: List.of(cart.items),
+        deliveryAddress: deliveryAddress,
+        deliveryCity: 'Uganda',
+        phone: phone,
+        paymentMethod: _paymentMethod,
       );
 
       // Server has accepted the order. Clear the cart:
