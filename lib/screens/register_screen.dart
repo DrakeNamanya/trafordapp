@@ -22,13 +22,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController(text: '256');
   final _emailController = TextEditingController();
   final _ninController = TextEditingController();
+  final _streetAddressController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   DateTime? _dateOfBirth;
   int? _selectedDistrictId;
   int? _selectedSubcountyId;
   int? _selectedParishId;
+  int? _selectedVillageId;
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
   String? _error;
 
   @override
@@ -49,6 +55,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _ninController.dispose();
+    _streetAddressController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -72,6 +81,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final parishes = _selectedSubcountyId != null
         ? locationService.getParishes(_selectedSubcountyId!)
         : <Parish>[];
+    final villages = _selectedParishId != null
+        ? locationService.getVillages(_selectedParishId!)
+        : <Village>[];
+    final isLoadingVillages = _selectedParishId != null &&
+        locationService.isVillagesLoadingFor(_selectedParishId!);
 
     return Scaffold(
       appBar: AppBar(
@@ -188,8 +202,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             if (_dateOfBirth == null) {
                               return 'Date of birth is required';
                             }
-                            if (_calculateAge(_dateOfBirth!) < 15) {
-                              return 'Must be at least 15 years old';
+                            if (_calculateAge(_dateOfBirth!) < 16) {
+                              return 'Must be at least 16 years old';
                             }
                             return null;
                           },
@@ -342,19 +356,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 16),
 
-                          // Parish/Village
+                          // Parish
                           DropdownButtonFormField<int>(
                             initialValue: _selectedParishId,
                             isExpanded: true,
                             menuMaxHeight: 350,
                             decoration: InputDecoration(
-                              labelText: 'Parish / Village *',
+                              labelText: 'Parish *',
                               prefixIcon: const Icon(Icons.home_outlined),
                               hintText: _selectedSubcountyId == null
                                   ? 'Select subcounty first'
                                   : (parishes.isEmpty
                                       ? 'No parishes available'
-                                      : 'Select parish/village'),
+                                      : 'Select parish'),
                             ),
                             items: parishes
                                 .map((p) => DropdownMenuItem(
@@ -366,13 +380,153 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             onChanged: _selectedSubcountyId == null
                                 ? null
                                 : (val) {
-                                    setState(() => _selectedParishId = val);
+                                    setState(() {
+                                      _selectedParishId = val;
+                                      _selectedVillageId = null;
+                                    });
+                                    if (val != null) {
+                                      locationService.loadVillagesFor(val);
+                                    }
                                   },
                             validator: (v) =>
-                                v == null ? 'Select your parish/village' : null,
+                                v == null ? 'Select your parish' : null,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Village (lazy loaded)
+                          DropdownButtonFormField<int>(
+                            initialValue: _selectedVillageId,
+                            isExpanded: true,
+                            menuMaxHeight: 350,
+                            decoration: InputDecoration(
+                              labelText: 'Village *',
+                              prefixIcon: const Icon(Icons.holiday_village),
+                              hintText: _selectedParishId == null
+                                  ? 'Select parish first'
+                                  : (isLoadingVillages
+                                      ? 'Loading villages...'
+                                      : (villages.isEmpty
+                                          ? 'No villages available'
+                                          : 'Select village')),
+                              suffixIcon: isLoadingVillages
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppTheme.trafordOrange,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            items: villages
+                                .map((v) => DropdownMenuItem(
+                                      value: v.id,
+                                      child: Text(v.name,
+                                          overflow: TextOverflow.ellipsis),
+                                    ))
+                                .toList(),
+                            onChanged: (_selectedParishId == null ||
+                                    isLoadingVillages)
+                                ? null
+                                : (val) {
+                                    setState(() => _selectedVillageId = val);
+                                  },
+                            validator: (v) =>
+                                v == null ? 'Select your village' : null,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Street / Plot Number / Building Name
+                          TextFormField(
+                            controller: _streetAddressController,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText:
+                                  'Street / Plot No. / Building / Road *',
+                              hintText: 'e.g. Plot 12, Mukasa Bldg, Bombo Rd',
+                              prefixIcon: Icon(Icons.signpost_outlined),
+                              helperText:
+                                  'So the rider can find your exact gate',
+                            ),
+                            maxLines: 2,
+                            minLines: 1,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Enter your street / plot / building';
+                              }
+                              return null;
+                            },
                           ),
                         ],
                       ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // --- PASSWORD ---
+              _sectionTitle('Password'),
+              const SizedBox(height: 4),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Use this password to sign in next time with your phone number.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
+              ),
+              _buildCard(
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password *',
+                        hintText: 'At least 6 characters',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Password is required';
+                        if (v.length < 6) return 'At least 6 characters';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      obscureText: _obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm Password *',
+                        hintText: 'Re-enter your password',
+                        prefixIcon: const Icon(Icons.lock_reset),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscureConfirm
+                              ? Icons.visibility_off
+                              : Icons.visibility),
+                          onPressed: () => setState(
+                              () => _obscureConfirm = !_obscureConfirm),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Confirm your password';
+                        if (v != _passwordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 24),
@@ -484,8 +638,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _error = 'Please select your date of birth');
       return;
     }
-    if (_calculateAge(_dateOfBirth!) < 15) {
-      setState(() => _error = 'You must be at least 15 years old');
+    if (_calculateAge(_dateOfBirth!) < 16) {
+      setState(() => _error = 'You must be at least 16 years old');
       return;
     }
 
@@ -509,12 +663,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
         districtId: _selectedDistrictId!,
         subcountyId: _selectedSubcountyId!,
         parishId: _selectedParishId!,
+        villageId: _selectedVillageId,
+        streetAddress: _streetAddressController.text.trim(),
         districtName: locService.districtName(_selectedDistrictId) ?? '',
         subcountyName: locService.subcountyName(_selectedSubcountyId) ?? '',
         parishName: locService.parishName(_selectedParishId) ?? '',
+        villageName: locService.villageName(_selectedVillageId),
         nin: _ninController.text.trim().isNotEmpty
             ? _ninController.text.trim()
             : null,
+        password: _passwordController.text,
       );
 
       if (!mounted) return;

@@ -9,6 +9,7 @@ import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/agro_service.dart';
 import 'services/delivery_profile_service.dart';
+import 'services/supplier_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/shop_screen.dart';
@@ -38,6 +39,7 @@ class TrafordApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => NotificationService()),
         ChangeNotifierProvider(create: (_) => AgroService()),
         ChangeNotifierProvider(create: (_) => DeliveryProfileService()),
+        ChangeNotifierProvider(create: (_) => SupplierService()),
       ],
       child: MaterialApp(
         title: 'Traford Farm Fresh',

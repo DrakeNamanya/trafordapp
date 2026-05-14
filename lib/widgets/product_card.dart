@@ -43,23 +43,7 @@ class ProductCard extends StatelessWidget {
                       topLeft: Radius.circular(16),
                       topRight: Radius.circular(16),
                     ),
-                    child: Container(
-                      color: const Color(0xFFF3F4F6),
-                      child: product.image != null
-                          ? Image.network(
-                              product.image!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Center(
-                                child: Icon(Icons.eco,
-                                    size: 40,
-                                    color: AppTheme.trafordOrange),
-                              ),
-                            )
-                          : const Center(
-                              child: Icon(Icons.eco,
-                                  size: 40, color: AppTheme.trafordOrange),
-                            ),
-                    ),
+                    child: _SafeProductImage(imageUrl: product.image),
                   ),
                   // Wishlist heart (white circle, top-right)
                   Positioned(
@@ -180,6 +164,77 @@ class ProductCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A defensive wrapper around [Image.network] that:
+/// - Validates the URL string before handing it to the framework
+/// - Caps the decoded raster to a small thumb size (cacheWidth) so a 3-column
+///   grid with 100+ items doesn't run the process out of memory mid-scroll
+/// - Gracefully renders a placeholder for missing / broken images
+class _SafeProductImage extends StatelessWidget {
+  final String? imageUrl;
+
+  const _SafeProductImage({this.imageUrl});
+
+  static const _placeholderColor = Color(0xFFF3F4F6);
+
+  Widget _placeholder() => Container(
+        color: _placeholderColor,
+        child: const Center(
+          child: Icon(Icons.eco,
+              size: 40, color: AppTheme.trafordOrange),
+        ),
+      );
+
+  bool _isValidUrl(String? raw) {
+    if (raw == null) return false;
+    final s = raw.trim();
+    if (s.isEmpty) return false;
+    // Allow http(s) and data URIs only — block anything that would crash
+    // Image.network (e.g. asset:// or unparseable strings from old rows).
+    if (!(s.startsWith('http://') ||
+        s.startsWith('https://') ||
+        s.startsWith('data:'))) {
+      return false;
+    }
+    final uri = Uri.tryParse(s);
+    return uri != null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isValidUrl(imageUrl)) {
+      return _placeholder();
+    }
+
+    return Image.network(
+      imageUrl!.trim(),
+      fit: BoxFit.cover,
+      // Each card is roughly 130px wide at 3 cols on a typical phone, but
+      // we leave room for tablets. 300 keeps memory low without visibly
+      // softening the image.
+      cacheWidth: 300,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.low,
+      errorBuilder: (_, __, ___) => _placeholder(),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          color: _placeholderColor,
+          child: const Center(
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.trafordOrange,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

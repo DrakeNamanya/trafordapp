@@ -6,6 +6,7 @@ import '../services/delivery_profile_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import 'become_supplier_screen.dart';
 import 'login_screen.dart';
 import 'notifications_screen.dart';
 
@@ -614,6 +615,76 @@ class ProfileScreen extends StatelessWidget {
                     _profileRow(Icons.badge, 'NIN', nin.toString()),
                   ],
                 ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Become Our Supplier card
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BecomeSupplierScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border:
+                        Border.all(color: AppTheme.growthGreen, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.softLeaf,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.agriculture,
+                            color: AppTheme.growthGreen, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Become Our Supplier',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.growthGreen,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Grow or produce something we sell? Tell us what, how much, and how often — we will reach out.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textMuted,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right,
+                          color: AppTheme.growthGreen),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

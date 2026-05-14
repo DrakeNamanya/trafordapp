@@ -45,10 +45,32 @@ class Parish {
       );
 }
 
+class Village {
+  final int id;
+  final String name;
+  final int parishId;
+
+  const Village(
+      {required this.id, required this.name, required this.parishId});
+
+  factory Village.fromJson(Map<String, dynamic> json) => Village(
+        id: json['id'] as int,
+        name: json['name'] as String? ?? '',
+        parishId: json['parish_id'] as int? ?? 0,
+      );
+}
+
 class LocationService extends ChangeNotifier {
   List<District> _districts = [];
   List<Subcounty> _subcounties = [];
   List<Parish> _parishes = [];
+  // Villages are 70k+ rows - NEVER load all at once, always lazy by parish
+  final List<Village> _villages = [];
+  // Track which parish ids we've already fetched villages for (avoid refetch)
+  final Set<int> _villagesLoadedParishIds = <int>{};
+  // Per-parish loading flag so the UI can show a small spinner
+  final Set<int> _villagesLoadingParishIds = <int>{};
+
   bool _isLoading = false;
   bool _isLoaded = false;
 
@@ -61,6 +83,15 @@ class LocationService extends ChangeNotifier {
 
   List<Parish> getParishes(int subcountyId) =>
       _parishes.where((p) => p.subcountyId == subcountyId).toList();
+
+  List<Village> getVillages(int parishId) =>
+      _villages.where((v) => v.parishId == parishId).toList();
+
+  bool isVillagesLoadingFor(int parishId) =>
+      _villagesLoadingParishIds.contains(parishId);
+
+  bool isVillagesLoadedFor(int parishId) =>
+      _villagesLoadedParishIds.contains(parishId);
 
   String? districtName(int? id) {
     if (id == null) return null;
@@ -84,6 +115,15 @@ class LocationService extends ChangeNotifier {
     if (id == null) return null;
     try {
       return _parishes.firstWhere((p) => p.id == id).name;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? villageName(int? id) {
+    if (id == null) return null;
+    try {
+      return _villages.firstWhere((v) => v.id == id).name;
     } catch (_) {
       return null;
     }
@@ -182,6 +222,39 @@ class LocationService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading parishes: $e');
+    }
+  }
+
+  /// Load villages for a specific parish (lazy loading; villages table is huge)
+  Future<void> loadVillagesFor(int parishId) async {
+    if (_villagesLoadedParishIds.contains(parishId)) return;
+    if (_villagesLoadingParishIds.contains(parishId)) return;
+
+    _villagesLoadingParishIds.add(parishId);
+    notifyListeners();
+
+    try {
+      final res = await SupabaseConfig.client
+          .from('villages')
+          .select()
+          .eq('parish_id', parishId)
+          .order('name');
+
+      final fetched = (res as List)
+          .map((j) => Village.fromJson(j as Map<String, dynamic>))
+          .toList();
+
+      for (final v in fetched) {
+        if (!_villages.any((x) => x.id == v.id)) {
+          _villages.add(v);
+        }
+      }
+      _villagesLoadedParishIds.add(parishId);
+    } catch (e) {
+      debugPrint('Error loading villages: $e');
+    } finally {
+      _villagesLoadingParishIds.remove(parishId);
+      notifyListeners();
     }
   }
 }
