@@ -64,11 +64,12 @@ class _LoginScreenState extends State<LoginScreen> {
       _accountStatus = status;
       _passwordController.clear();
       if (status == 'error') {
-        _error = 'Could not check this number. Try again.';
+        _error =
+            'Could not check this number right now. Please check your connection and try again.';
         _accountStatus = null;
       } else if (status == 'not_found') {
         _error =
-            'No account with this phone number. Tap "Create New Account" below.';
+            'No account found for $phone. If you registered on the website with a different number, please use that one — or tap "Create New Account" below.';
       }
     });
   }

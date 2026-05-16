@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+import 'api_client.dart';
 import 'supabase_config.dart';
 
 /// AuthService — rewritten to use the canonical `profiles` table (UUID-keyed
@@ -28,6 +31,12 @@ class AuthService extends ChangeNotifier {
 
   /// Role string from the profiles table — used to gate the Agro Shop tab.
   String get role => (_profile?['role'] as String?) ?? 'customer';
+
+  /// True when the profile has the `must_change_password` flag set by the
+  /// director-invitation flow. The Staff Login screen should redirect to a
+  /// change-password screen before doing anything else.
+  bool get mustChangePassword =>
+      (_profile?['must_change_password'] as bool?) ?? false;
 
   /// True if the user can see the staff-only Agro Inputs shop.
   bool get canShopAgro =>
@@ -63,6 +72,9 @@ class AuthService extends ChangeNotifier {
       'phone': row['phone'] ?? '',
       'email': row['email'] ?? '',
       'role': row['role'] ?? 'customer',
+      // Director-invitation flag — when true, the Staff Login screen must
+      // route to the change-password flow before opening the Agro shop.
+      'must_change_password': row['must_change_password'] == true,
       'street_address': row['street_address'] ?? '',
       'district_id': row['district_id'] as int?,
       'subcounty_id': row['subcounty_id'] as int?,
@@ -105,75 +117,173 @@ class AuthService extends ChangeNotifier {
   String _emailForPhone(String phone) =>
       '$phone@phone.trafordfresh.local';
 
-  /// Check whether a user with this phone already exists in profiles.
-  /// Returns 'has_password' (always — Supabase Auth enforces a password)
-  /// for existing users, 'not_found' otherwise, or 'error' on failure.
+  /// Check whether a user with this phone already exists.
+  ///
+  /// IMPORTANT: RLS on `public.profiles` hides every row from anon, so a
+  /// direct Supabase query always returned `not_found` for unauthenticated
+  /// callers — even when the account very much existed. We now route the
+  /// lookup through `/api/public/auth/phone-lookup` which uses the
+  /// service-role key server-side, mirroring the website's
+  /// /api/auth/phone-lookup endpoint. That way the website and the mobile
+  /// app see exactly the same authoritative answer.
+  ///
+  /// Returns:
+  ///   'has_password' — account exists, prompt for password
+  ///   'not_found'    — no account, suggest creating
+  ///   'error'        — lookup failed
+  ///
+  /// Side-effect: when an account is found, we cache the resolved email on
+  /// the object so `loginWithPhonePassword()` can sign in straight away
+  /// (Supabase phone auth is disabled in this project — login is always
+  /// email + password under the hood).
+  String? _lastResolvedEmailForPhone;
+
   Future<String> userHasPasswordStatus(String phone) async {
+    _lastResolvedEmailForPhone = null;
     try {
+      final res = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/auth/phone-lookup'),
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'phone': phone}),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        if (body['has_account'] == true) {
+          final email = body['email'] as String?;
+          if (email != null && email.isNotEmpty) {
+            _lastResolvedEmailForPhone = email;
+          }
+          return 'has_password';
+        }
+        return 'not_found';
+      }
+
+      // Fall back to the direct profiles query (will likely return null for
+      // anon callers but stays as a safety net).
       final row = await SupabaseConfig.client
           .from('profiles')
-          .select('id')
+          .select('email')
           .eq('phone', phone)
           .maybeSingle();
-      return row != null ? 'has_password' : 'not_found';
+      if (row != null) {
+        _lastResolvedEmailForPhone = row['email'] as String?;
+        return 'has_password';
+      }
+      return 'not_found';
     } catch (e) {
       debugPrint('userHasPasswordStatus error: $e');
       return 'error';
     }
   }
 
-  /// Phone + password login. We look up the email-for-phone, then sign in
-  /// via Supabase Auth, then hydrate the profile row.
+  /// Phone + password login. We first try the email resolved by
+  /// `userHasPasswordStatus()` (cached on `_lastResolvedEmailForPhone`),
+  /// then fall back to the synthetic phone-email format.
   Future<bool> loginWithPhonePassword(String phone, String password) async {
     _isLoading = true;
     notifyListeners();
 
+    // 1) Preferred path: use the email the phone-lookup endpoint returned.
+    final cachedEmail = _lastResolvedEmailForPhone;
+    if (cachedEmail != null && cachedEmail.isNotEmpty) {
+      try {
+        final res = await SupabaseConfig.client.auth.signInWithPassword(
+          email: cachedEmail,
+          password: password,
+        );
+        if (res.user != null) {
+          await _loadProfileForUser(res.user!.id);
+          _isLoading = false;
+          notifyListeners();
+          return _isLoggedIn;
+        }
+      } catch (e) {
+        debugPrint('loginWithPhonePassword (cached-email) failed: $e');
+      }
+    }
+
+    // 2) Fall back to the synthetic phone-email format used by older accounts
+    //    that signed up without an email.
     try {
-      // First try the synthetic phone-email format.
       final res = await SupabaseConfig.client.auth.signInWithPassword(
         email: _emailForPhone(phone),
         password: password,
       );
-      final user = res.user;
-      if (user != null) {
-        await _loadProfileForUser(user.id);
+      if (res.user != null) {
+        await _loadProfileForUser(res.user!.id);
         _isLoading = false;
         notifyListeners();
         return _isLoggedIn;
       }
     } catch (e) {
       debugPrint('loginWithPhonePassword (phone-email) failed: $e');
-
-      // Fallback: the user may have signed up with a real email — look it
-      // up via the profiles row, then sign in with that real email.
-      try {
-        final row = await SupabaseConfig.client
-            .from('profiles')
-            .select('email')
-            .eq('phone', phone)
-            .maybeSingle();
-        final realEmail = (row?['email'] as String?)?.trim();
-        if (realEmail != null && realEmail.isNotEmpty) {
-          final res = await SupabaseConfig.client.auth.signInWithPassword(
-            email: realEmail,
-            password: password,
-          );
-          final user = res.user;
-          if (user != null) {
-            await _loadProfileForUser(user.id);
-            _isLoading = false;
-            notifyListeners();
-            return _isLoggedIn;
-          }
-        }
-      } catch (e2) {
-        debugPrint('loginWithPhonePassword (real-email) failed: $e2');
-      }
     }
 
     _isLoading = false;
     notifyListeners();
     return false;
+  }
+
+  /// Email + password login — used by the staff Agro Inputs sign-in screen.
+  /// Director invitations are email-based (Resend sends the temp password
+  /// to the email address), so the agro shop login must be email-driven.
+  Future<bool> loginWithEmailPassword(String email, String password) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final res = await SupabaseConfig.client.auth.signInWithPassword(
+        email: email.trim(),
+        password: password,
+      );
+      if (res.user != null) {
+        await _loadProfileForUser(res.user!.id);
+        _isLoading = false;
+        notifyListeners();
+        return _isLoggedIn;
+      }
+    } catch (e) {
+      debugPrint('loginWithEmailPassword failed: $e');
+    }
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  /// Change the signed-in user's password AND clear the
+  /// `must_change_password` flag on their profile. Used after the staff
+  /// invitation flow forces a password change on first login.
+  Future<bool> changePasswordAndClearFlag(String newPassword) async {
+    try {
+      // 1) Update the auth.users password.
+      await SupabaseConfig.client.auth.updateUser(
+        sb.UserAttributes(password: newPassword),
+      );
+
+      // 2) Clear the must_change_password flag via the RPC added in
+      //    migration 008. RPC runs SECURITY DEFINER so it works even with
+      //    the user-update RLS policy that forbids changing role.
+      try {
+        await SupabaseConfig.client.rpc('clear_must_change_password');
+      } catch (e) {
+        debugPrint('clear_must_change_password rpc error (non-fatal): $e');
+      }
+
+      // 3) Re-hydrate the local profile so `mustChangePassword` flips false.
+      final uid = SupabaseConfig.client.auth.currentUser?.id;
+      if (uid != null) {
+        await _loadProfileForUser(uid);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('changePasswordAndClearFlag failed: $e');
+      return false;
+    }
   }
 
   /// Phone-only login is no longer supported (Supabase Auth requires a

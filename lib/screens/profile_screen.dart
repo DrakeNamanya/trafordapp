@@ -8,6 +8,7 @@ import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import 'become_supplier_screen.dart';
 import 'login_screen.dart';
+import 'staff_login_screen.dart';
 import 'notifications_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -271,6 +272,11 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Staff: Agro Inputs Shop discovery card (Issue 3)
+          // NB: this card opens the DEDICATED staff login (email + temp
+          // password from the director-invitation email — Resend) rather
+          // than the customer phone-based LoginScreen. Staff accounts are
+          // invited, not self-registered, so the screen also has no
+          // "Create Account" button.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Material(
@@ -282,7 +288,7 @@ class ProfileScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const LoginScreen(),
+                      builder: (_) => const StaffLoginScreen(),
                     ),
                   );
                 },

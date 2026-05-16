@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import 'agro_checkout_screen.dart';
+import 'staff_login_screen.dart';
 
 /// Staff-only Agro Inputs shop.
 /// Visible only when AuthService.canShopAgro == true.
@@ -312,9 +313,28 @@ class _AgroShopScreenState extends State<AgroShopScreen> {
                         fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
                 const Text(
-                  'Sign in with your staff Supabase account to access agro inputs.',
+                  'Sign in with the email and temporary password from your director invitation email to access agro inputs.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const StaffLoginScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.agriculture),
+                  label: const Text('Staff Sign In'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.growthGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                  ),
                 ),
               ],
             ),
