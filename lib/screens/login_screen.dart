@@ -82,7 +82,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     cart.setUserId(auth.userId!);
     try {
-      await orderService.loadOrders(auth.userId!);
+      // Pull previous orders by phone (RLS-bypassing service-role endpoint)
+      // so the user actually sees the order history they made on the
+      // website / on previous sessions.
+      await orderService.loadOrders(
+        auth.userId!,
+        phone: auth.userPhone,
+        isStaff: auth.canShopAgro,
+      );
     } catch (_) {}
     try {
       await notifService.loadNotifications(auth.userId!);

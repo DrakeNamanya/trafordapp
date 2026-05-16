@@ -61,6 +61,15 @@ class AgroService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drop everything tied to the previous staff session (cart, products,
+  /// error). Called from AuthService.logout so the next user starts clean.
+  void resetOnLogout() {
+    _cart.clear();
+    _products = [];
+    _error = null;
+    notifyListeners();
+  }
+
   /// Load the agro catalogue. Requires ApiClient.bearerToken to be set.
   Future<void> loadProducts() async {
     _isLoading = true;

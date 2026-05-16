@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/agro_service.dart';
+import '../services/auth_service.dart';
 import '../services/cart_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/product_card.dart';
+import 'agro_checkout_screen.dart';
+import 'agro_shop_screen.dart';
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
@@ -13,7 +17,14 @@ class CartScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartService>();
+    final auth = context.watch<AuthService>();
+    final agro = context.watch<AgroService>();
     final items = cart.items;
+    // Show the agro-cart banner ONLY for staff who actually have items
+    // queued in the agro shop. This is what fixes the "agro input items
+    // were not sent to cart" confusion — the agro cart is now visible
+    // and clickable right from the main Cart tab.
+    final showAgroBanner = auth.canShopAgro && agro.cartCount > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -56,36 +67,44 @@ class CartScreen extends StatelessWidget {
       body: cart.isLoading
           ? const Center(child: CircularProgressIndicator())
           : items.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.shopping_cart_outlined,
-                          size: 80, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Your cart is empty',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textMuted,
+              ? Column(
+                  children: [
+                    if (showAgroBanner) _buildAgroBanner(context, agro),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.shopping_cart_outlined,
+                                size: 80, color: Colors.grey[300]),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Your cart is empty',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Add some fresh farm products!',
+                              style: TextStyle(color: AppTheme.textMuted),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: () => onNavigate?.call(1),
+                              child: const Text('Continue Shopping'),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Add some fresh farm products!',
-                        style: TextStyle(color: AppTheme.textMuted),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () => onNavigate?.call(1),
-                        child: const Text('Continue Shopping'),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 )
               : Column(
                   children: [
+                    if (showAgroBanner) _buildAgroBanner(context, agro),
                     // Items List
                     Expanded(
                       child: ListView.builder(
@@ -334,6 +353,65 @@ class CartScreen extends StatelessWidget {
               fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+
+  /// Banner shown at the top of the Cart tab whenever a staff user has
+  /// items queued in the agro shop. Tapping it opens the AgroCheckoutScreen
+  /// so the staff member can review and submit the agro order. A long-press
+  /// drops the user back into the AgroShopScreen to add more items.
+  Widget _buildAgroBanner(BuildContext context, AgroService agro) {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const AgroCheckoutScreen()),
+      ),
+      onLongPress: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const AgroShopScreen()),
+      ),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.trafordOrange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.trafordOrange.withValues(alpha: 0.30),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.agriculture, color: AppTheme.trafordOrange),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Agro Cart',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textDark,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${agro.cartCount} item(s)  •  UGX ${formatUGX(agro.cartSubtotal())}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.trafordOrange),
+          ],
+        ),
+      ),
     );
   }
 }

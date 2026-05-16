@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/agro_service.dart';
 import '../services/auth_service.dart';
 import '../services/cart_service.dart';
 import '../services/delivery_profile_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
+import '../services/order_service.dart';
+import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import 'become_supplier_screen.dart';
 import 'login_screen.dart';
@@ -976,9 +979,36 @@ class ProfileScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              auth.logout();
+            onPressed: () async {
+              // Grab all the services we need to scrub BEFORE we close the
+              // dialog (otherwise the context becomes invalid for reads).
+              final orderService =
+                  Provider.of<OrderService>(context, listen: false);
+              final agroService =
+                  Provider.of<AgroService>(context, listen: false);
+              final notifService =
+                  Provider.of<NotificationService>(context, listen: false);
+
               Navigator.pop(ctx);
+
+              // 1) End the Supabase session.
+              await auth.logout();
+
+              // 2) Clear every per-user cache so the next user (or the
+              //    same user signing back in) doesn't see the previous
+              //    session's data. This was the bug behind:
+              //      - "orders tab still showed customer orders after I
+              //         logged in as field staff"
+              //      - "agro cart was hidden after I switched accounts"
+              await cart.resetOnLogout();
+              await orderService.clearLocalCache();
+              agroService.resetOnLogout();
+              notifService.clear();
+              // Drop any bearer token stuck on ApiClient so staff endpoints
+              // don't keep returning data for the previous session.
+              ApiClient.bearerToken = null;
+
+              if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Logged out successfully'),

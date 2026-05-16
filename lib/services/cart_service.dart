@@ -286,6 +286,24 @@ class CartService extends ChangeNotifier {
     _persistLocal();
   }
 
+  /// Hard reset for sign-out: drop the in-memory cart, the persisted local
+  /// cart, and the wishlist. Called when the user logs out so the next
+  /// session starts clean (the previous user's cached cart was leaking
+  /// across logins).
+  Future<void> resetOnLogout() async {
+    _items = [];
+    _wishlistProductIds.clear();
+    _userId = null;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kCartKey);
+      await prefs.remove(_kWishlistKey);
+    } catch (e) {
+      debugPrint('CartService resetOnLogout failed: $e');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // WISHLIST (local-first, with optional server mirror)
   // ---------------------------------------------------------------------------

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/cart_service.dart';
+import '../services/notification_service.dart';
+import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 
 /// Dedicated sign-in screen for staff (field_staff / admin_staff / admin /
@@ -89,6 +93,30 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
             'This account does not have staff access. Use the customer sign-in instead.';
       });
       return;
+    }
+
+    // 3) Wire the staff session into the rest of the app: cart's userId
+    //    (so wishlist/cart sync is staff-owned), JWT on ApiClient (so the
+    //    Agro endpoints see Authorization), and load this staff member's
+    //    agro orders so the Orders tab is populated for them.
+    if (auth.userId != null) {
+      ApiClient.bearerToken = auth.accessToken;
+      final cart = Provider.of<CartService>(context, listen: false);
+      final orderService =
+          Provider.of<OrderService>(context, listen: false);
+      final notifService =
+          Provider.of<NotificationService>(context, listen: false);
+      cart.setUserId(auth.userId!);
+      try {
+        await orderService.loadOrders(
+          auth.userId!,
+          phone: auth.userPhone,
+          isStaff: true,
+        );
+      } catch (_) {}
+      try {
+        await notifService.loadNotifications(auth.userId!);
+      } catch (_) {}
     }
 
     if (!mounted) return;

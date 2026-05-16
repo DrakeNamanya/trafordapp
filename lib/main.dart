@@ -131,7 +131,11 @@ class _AppInitializerState extends State<AppInitializer> {
         cartService.setUserId(authService.userId!);
 
         // Fire-and-forget: load orders and notifications in background
-        _loadSecondaryServicesInBackground(authService.userId!);
+        _loadSecondaryServicesInBackground(
+          authService.userId!,
+          phone: authService.userPhone,
+          isStaff: authService.canShopAgro,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -140,12 +144,20 @@ class _AppInitializerState extends State<AppInitializer> {
     }
   }
 
-  /// Non-blocking background loader for orders/notifications
-  void _loadSecondaryServicesInBackground(int userId) {
+  /// Non-blocking background loader for orders/notifications. Pulls customer
+  /// orders by phone (works around the profiles+orders RLS) and, for staff,
+  /// also pulls /agro-orders/mine via the JWT.
+  void _loadSecondaryServicesInBackground(
+    int userId, {
+    String? phone,
+    bool isStaff = false,
+  }) {
     // Orders
     try {
       final orderService = Provider.of<OrderService>(context, listen: false);
-      orderService.loadOrders(userId).catchError((_) {});
+      orderService
+          .loadOrders(userId, phone: phone, isStaff: isStaff)
+          .catchError((_) {});
     } catch (_) {}
 
     // Notifications (may fail due to UUID column - that's OK)

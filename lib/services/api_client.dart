@@ -99,9 +99,15 @@ class ApiClient {
       'items': items,
     };
 
+    // CRITICAL: send the JWT when one is available. The server's
+    // /orders/guest-checkout endpoint uses `getCallerUser()` to detect
+    // signed-in customers and skips the new-auth-user mint code path —
+    // without this, a logged-in customer's checkout would always look
+    // exactly like an anonymous guest checkout and risk creating a new
+    // auth row for the same phone number.
     final res = await http.post(
       Uri.parse('$baseUrl/orders/guest-checkout'),
-      headers: _headers(),
+      headers: _headers(withAuth: true),
       body: jsonEncode(body),
     );
     final decoded = jsonDecode(res.body);
@@ -112,6 +118,48 @@ class ApiClient {
       throw ApiException(msg, res.statusCode, res.body);
     }
     return Map<String, dynamic>.from(decoded as Map);
+  }
+
+  /// POST /orders/by-phone — list a customer's orders by phone number.
+  /// Uses the service-role key server-side, so it works even when RLS
+  /// hides every row from anon. Returns { orders: [...] } where each
+  /// order has an embedded `items` array.
+  static Future<List<Map<String, dynamic>>> getOrdersByPhone(
+    String phone, {
+    int limit = 50,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/orders/by-phone'),
+      headers: _headers(),
+      body: jsonEncode({'phone': phone, 'limit': limit}),
+    );
+    if (res.statusCode != 200) {
+      throw ApiException(
+          'Failed to load orders', res.statusCode, res.body);
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(body['orders'] as List? ?? []);
+  }
+
+  /// GET /agro-orders/mine — list the signed-in staff member's agro orders.
+  /// Requires the Authorization header (Supabase JWT).
+  static Future<List<Map<String, dynamic>>> getMyAgroOrders() async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/agro-orders/mine'),
+      headers: _headers(withAuth: true),
+    );
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw ApiException(
+          'Sign in as field staff to view agro orders',
+          res.statusCode,
+          res.body);
+    }
+    if (res.statusCode != 200) {
+      throw ApiException(
+          'Failed to load agro orders', res.statusCode, res.body);
+    }
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(body['orders'] as List? ?? []);
   }
 
   /// GET /orders/by-number/:order_number — public refresh of a single order

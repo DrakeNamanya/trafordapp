@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/order_service.dart';
 import '../services/notification_service.dart';
@@ -22,31 +23,43 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final auth = Provider.of<AuthService>(context, listen: false);
-      // Always reload — even guests (userId=2) need to see their local
-      // order cache. OrderService.loadOrders() returns the local cache for
-      // guests and merges server + local for signed-in users.
-      final userIdToLoad = auth.userId ?? 2;
-      final orderService =
-          Provider.of<OrderService>(context, listen: false);
-      await orderService.loadOrders(userIdToLoad);
-      // Then refresh the status of every cached order against the public
-      // /orders/by-number endpoint so admin status changes surface even for
-      // guests who don't have a Supabase JWT.
-      await orderService.refreshAllStatuses();
-      if (!mounted) return;
-      if (auth.userId != null) {
-        await Provider.of<NotificationService>(context, listen: false)
-            .loadNotifications(auth.userId!);
-      }
+      await _reload();
     });
+  }
+
+  Future<void> _reload() async {
+    if (!mounted) return;
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final orderService = Provider.of<OrderService>(context, listen: false);
+
+    // Make sure the staff JWT is on ApiClient before calling
+    // /agro-orders/mine.
+    if (auth.canShopAgro) {
+      ApiClient.bearerToken = auth.accessToken;
+    }
+
+    // Pull customer orders by phone (works around RLS) and, for staff,
+    // also pull agro orders via the JWT-authenticated /agro-orders/mine.
+    await orderService.loadOrders(
+      auth.userId ?? 2,
+      phone: auth.userPhone,
+      isStaff: auth.canShopAgro,
+    );
+    await orderService.refreshAllStatuses();
+    if (!mounted) return;
+    if (auth.userId != null) {
+      await Provider.of<NotificationService>(context, listen: false)
+          .loadNotifications(auth.userId!);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final orderService = context.watch<OrderService>();
     final notifService = context.watch<NotificationService>();
-    final auth = context.watch<AuthService>();
+    // Watch auth so we re-trigger when the role changes (customer -> staff
+    // after a staff sign-in) — we don't reference it directly in the tree.
+    context.watch<AuthService>();
     final orders = orderService.orders;
 
     return Scaffold(
@@ -77,14 +90,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () async {
-              final userIdToLoad = auth.userId ?? 2;
-              await orderService.loadOrders(userIdToLoad);
-              await orderService.refreshAllStatuses();
-              if (auth.userId != null) {
-                await notifService.loadNotifications(auth.userId!);
-              }
-            },
+            onPressed: _reload,
           ),
         ],
       ),
@@ -120,14 +126,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: () async {
-                    final userIdToLoad = auth.userId ?? 2;
-                    await orderService.loadOrders(userIdToLoad);
-                    await orderService.refreshAllStatuses();
-                    if (auth.userId != null) {
-                      await notifService.loadNotifications(auth.userId!);
-                    }
-                  },
+                  onRefresh: _reload,
                   child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: orders.length,

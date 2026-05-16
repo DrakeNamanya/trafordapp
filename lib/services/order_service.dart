@@ -10,7 +10,6 @@ class OrderService extends ChangeNotifier {
   /// stashed here so the user can still track them in the Orders tab on the
   /// same device. Persists across app restarts.
   static const _kLocalOrdersKey = 'tff_local_orders_v1';
-  static const int _kSharedGuestUserId = 2;
 
   List<Order> _orders = [];
   bool _isLoading = false;
@@ -18,63 +17,115 @@ class OrderService extends ChangeNotifier {
   List<Order> get orders => _orders;
   bool get isLoading => _isLoading;
 
-  /// Load orders from local cache (guest orders) and merge with server orders
-  /// for logged-in users. Guest userId (2) only reads from the local cache so
-  /// every device shows its own order history.
-  Future<void> loadOrders(int userId) async {
+  /// Load orders from local cache (guest orders) and merge with server orders.
+  ///
+  /// New flow (Dec 2025):
+  ///   - Always start from the on-device local cache (guest orders + any
+  ///     locally-recorded confirmations) for an instant first paint.
+  ///   - If a `phone` is supplied, hit POST /orders/by-phone — a service-role
+  ///     endpoint that returns every customer-typed order for that phone
+  ///     number. This is what makes "previous orders" actually appear after
+  ///     the user signs in (RLS on the profiles + orders tables was hiding
+  ///     them before).
+  ///   - If `isStaff` is true, additionally pull GET /agro-orders/mine using
+  ///     the Supabase JWT so staff see their agro orders in the same tab.
+  ///   - Merge by order_number (server is authoritative; locals fill the gap).
+  Future<void> loadOrders(
+    int userId, {
+    String? phone,
+    bool isStaff = false,
+  }) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Always start from the local cache so the user sees their guest orders
-      // (the ones placed without a real account) instantly.
+      // 1) Start from the local cache so guest/just-checked-out orders
+      //    appear immediately.
       final localOrders = await _loadLocalOrders();
+      List<Order> serverOrders = [];
 
-      if (userId == _kSharedGuestUserId) {
-        _orders = localOrders;
-      } else {
-        // Logged-in user: fetch from server + merge.
+      // 2) Phone-based lookup for customer orders (works for both signed-in
+      //    customers AND for someone who placed a guest order but later
+      //    creates an account on the same phone).
+      if (phone != null && phone.trim().isNotEmpty) {
         try {
-          final response = await SupabaseConfig.client
-              .from('orders')
-              .select()
-              .eq('user_id', userId)
-              .order('created_at', ascending: false);
-
-          final serverOrders = (response as List)
-              .map((json) => Order.fromJson(json as Map<String, dynamic>))
-              .toList();
-
-          for (final order in serverOrders) {
-            final itemsResponse = await SupabaseConfig.client
-                .from('order_items')
-                .select()
-                .eq('order_id', order.id);
-            order.items = (itemsResponse as List)
-                .map((json) =>
-                    OrderItem.fromJson(json as Map<String, dynamic>))
-                .toList();
-          }
-
-          // Merge — server orders first (authoritative), then locals that
-          // don't already exist server-side (matched by order_number).
-          final serverNumbers =
-              serverOrders.map((o) => o.orderNumber).toSet();
-          final localOnly = localOrders
-              .where((o) => !serverNumbers.contains(o.orderNumber))
-              .toList();
-          _orders = [...serverOrders, ...localOnly];
+          final rows = await ApiClient.getOrdersByPhone(phone.trim());
+          serverOrders = rows.map(_orderFromPublicJson).toList();
         } catch (e) {
-          debugPrint('Error loading server orders, using local cache: $e');
-          _orders = localOrders;
+          debugPrint('orders/by-phone failed: $e');
         }
       }
+
+      // 3) Staff agro orders.
+      if (isStaff) {
+        try {
+          final rows = await ApiClient.getMyAgroOrders();
+          final agroOrders = rows.map(_orderFromPublicJson).toList();
+          // Tag agro orders so the UI can visually distinguish them.
+          serverOrders = [...serverOrders, ...agroOrders];
+        } catch (e) {
+          debugPrint('agro-orders/mine failed: $e');
+        }
+      }
+
+      // 4) Merge — server orders first (authoritative), then locals that
+      //    don't already exist server-side (matched by order_number).
+      final serverNumbers =
+          serverOrders.map((o) => o.orderNumber).toSet();
+      final localOnly = localOrders
+          .where((o) => !serverNumbers.contains(o.orderNumber))
+          .toList();
+      // Sort merged list by createdAt desc.
+      final merged = [...serverOrders, ...localOnly];
+      merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _orders = merged;
     } catch (e) {
       debugPrint('Error loading orders: $e');
     }
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Parse an order from the public /orders/by-phone or /agro-orders/mine
+  /// response, where line items are embedded under `items` and amounts may
+  /// be returned as strings.
+  Order _orderFromPublicJson(Map<String, dynamic> json) {
+    double parseAmount(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? 0;
+    }
+
+    final rawItems = (json['items'] as List?) ?? const [];
+    final items = rawItems
+        .whereType<Map>()
+        .map((it) {
+          final m = Map<String, dynamic>.from(it);
+          return OrderItem(
+            productName: m['product_name'] as String? ?? 'Product',
+            quantity: m['quantity'] as int? ?? 1,
+            price: parseAmount(m['unit_price'] ?? m['price'] ?? m['subtotal']),
+          );
+        })
+        .toList();
+
+    return Order(
+      id: json['id'] is int ? json['id'] as int : int.tryParse('${json['id']}') ?? 0,
+      orderNumber: (json['order_number'] as String?) ?? '',
+      status: (json['status'] as String?) ?? 'pending',
+      subtotal: parseAmount(json['subtotal']),
+      tax: parseAmount(json['tax'] ?? json['shipping_fee']),
+      total: parseAmount(json['total']),
+      shippingAddress: json['shipping_address'] as String?,
+      shippingCity: json['shipping_city'] as String?,
+      shippingPhone: json['shipping_phone'] as String?,
+      paymentMethod: json['payment_method'] as String?,
+      paymentStatus: (json['payment_status'] as String?) ?? 'pending',
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      items: items,
+    );
   }
 
   /// Record an order placed through the public guest-checkout API so it
@@ -221,6 +272,20 @@ class OrderService extends ChangeNotifier {
     for (final n in numbers) {
       await refreshOrderStatus(n);
     }
+  }
+
+  /// Wipe the on-device orders (in-memory + SharedPreferences). Called on
+  /// logout so the next signed-in user doesn't see the previous user's
+  /// cached order history.
+  Future<void> clearLocalCache() async {
+    _orders = [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kLocalOrdersKey);
+    } catch (e) {
+      debugPrint('OrderService clearLocalCache failed: $e');
+    }
+    notifyListeners();
   }
 
   Future<List<Order>> _loadLocalOrders() async {
