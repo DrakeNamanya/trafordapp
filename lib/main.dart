@@ -42,7 +42,7 @@ class TrafordApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SupplierService()),
       ],
       child: MaterialApp(
-        title: 'Traford Farm Fresh',
+        title: 'Fresh Market Ug',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.theme,
         home: const AppInitializer(),
@@ -221,7 +221,7 @@ class _AppInitializerState extends State<AppInitializer> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'Traford Farm Fresh',
+                'Fresh Market Ug',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
