@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/product_service.dart';
@@ -298,16 +299,19 @@ class _HomeScreenState extends State<HomeScreen> {
             flex: 4,
             child: SizedBox(
               height: double.infinity,
-              child: Image.network(
-                slide.image,
+              child: CachedNetworkImage(
+                imageUrl: slide.image,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                memCacheWidth: 500,
+                fadeInDuration: const Duration(milliseconds: 150),
+                errorWidget: (_, __, ___) => Container(
                   color: _softMint,
                   child: const Center(
                     child: Text('🥬',
                         style: TextStyle(fontSize: 60)),
                   ),
                 ),
+                placeholder: (_, __) => Container(color: _softMint),
               ),
             ),
           ),
@@ -462,22 +466,43 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             child: Container(
-              width: 70,
+              width: 76,
               margin: const EdgeInsets.symmetric(horizontal: 4),
               child: Column(
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: 64,
+                      height: 64,
                       color: _softMint2,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: Text(
-                        cat.emoji,
-                        style: const TextStyle(fontSize: 26),
-                      ),
+                      child: cat.displayImage != null
+                          ? CachedNetworkImage(
+                              imageUrl: cat.displayImage!,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 200,
+                              filterQuality: FilterQuality.low,
+                              fadeInDuration:
+                                  const Duration(milliseconds: 120),
+                              placeholder: (_, __) => Center(
+                                child: Text(
+                                  cat.emoji,
+                                  style: const TextStyle(fontSize: 26),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => Center(
+                                child: Text(
+                                  cat.emoji,
+                                  style: const TextStyle(fontSize: 26),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                cat.emoji,
+                                style: const TextStyle(fontSize: 26),
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -631,10 +656,12 @@ class _HomeScreenState extends State<HomeScreen> {
             flex: 4,
             child: SizedBox(
               height: 130,
-              child: Image.network(
-                'https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&w=400&q=80',
+              child: CachedNetworkImage(
+                imageUrl:
+                    'https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&w=400&q=80',
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Center(
+                memCacheWidth: 500,
+                errorWidget: (_, __, ___) => const Center(
                   child: Text('🥕🍇🍌',
                       style: TextStyle(fontSize: 40)),
                 ),

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/agro_service.dart';
@@ -147,16 +148,21 @@ class CartScreen extends StatelessWidget {
                                       height: 72,
                                       color: const Color(0xFFF3F4F6),
                                       child: item.product.image != null
-                                          ? Image.network(
-                                              item.product.image!,
+                                          ? CachedNetworkImage(
+                                              imageUrl: item.product.image!,
                                               fit: BoxFit.cover,
-                                              errorBuilder:
+                                              memCacheWidth: 200,
+                                              filterQuality:
+                                                  FilterQuality.low,
+                                              errorWidget:
                                                   (_, __, ___) =>
                                                       const Icon(
                                                 Icons.eco,
                                                 color:
                                                     AppTheme.trafordOrange,
                                               ),
+                                              placeholder: (_, __) =>
+                                                  const SizedBox(),
                                             )
                                           : const Icon(
                                               Icons.eco,

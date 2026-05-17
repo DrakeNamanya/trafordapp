@@ -107,6 +107,60 @@ class Category {
     return '\u{1F33F}';
   }
 
+  /// Photo URL to render in place of the emoji icon on the Shop-by-Category
+  /// tiles. We prefer the backend-supplied [image] when present, otherwise
+  /// fall back to a curated Unsplash thumbnail keyed by slug/name keywords.
+  /// Returns null when no image can be inferred — caller should render the
+  /// emoji fallback in that case.
+  String? get displayImage {
+    final remote = image?.trim();
+    if (remote != null && remote.isNotEmpty) return remote;
+    final s = (slug.isNotEmpty ? slug : name).toLowerCase();
+    // Unsplash CDN with size + quality hints — keeps each thumb under 25KB.
+    const w = 'auto=format&fit=crop&w=240&q=70';
+    if (s.contains('vegetable')) {
+      return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?$w';
+    }
+    if (s.contains('fruit')) {
+      return 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?$w';
+    }
+    if (s.contains('spice') || s.contains('herb')) {
+      return 'https://images.unsplash.com/photo-1505253758473-96b7015fcd40?$w';
+    }
+    if (s.contains('staple') || s.contains('tuber') ||
+        s.contains('potato') || s.contains('matooke')) {
+      return 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?$w';
+    }
+    if (s.contains('cereal') || s.contains('legume') ||
+        s.contains('bean') || s.contains('grain')) {
+      return 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?$w';
+    }
+    if (s.contains('meat') || s.contains('beef') ||
+        s.contains('poultry') || s.contains('chicken') ||
+        s.contains('goat')) {
+      return 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?$w';
+    }
+    if (s.contains('honey') || s.contains('bee') || s.contains('egg')) {
+      return 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?$w';
+    }
+    if (s.contains('nut')) {
+      return 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?$w';
+    }
+    if (s.contains('seed')) {
+      return 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?$w';
+    }
+    if (s.contains('fertili')) {
+      return 'https://images.unsplash.com/photo-1592978603886-1f8b1c4a9fb9?$w';
+    }
+    if (s.contains('tool')) {
+      return 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?$w';
+    }
+    if (s.contains('dry')) {
+      return 'https://images.unsplash.com/photo-1612257999756-d3d3e9b53d4b?$w';
+    }
+    return null;
+  }
+
   factory Category.fromJson(Map<String, dynamic> json) {
     return Category(
       id: json['id'] as int,

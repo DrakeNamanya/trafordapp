@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
@@ -81,12 +82,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               background: Container(
                 color: const Color(0xFFF3F4F6),
                 child: product.image != null
-                    ? Image.network(
-                        product.image!,
+                    ? CachedNetworkImage(
+                        imageUrl: product.image!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Center(
+                        memCacheWidth: 800,
+                        fadeInDuration:
+                            const Duration(milliseconds: 150),
+                        errorWidget: (_, __, ___) => const Center(
                           child: Icon(Icons.eco,
                               size: 80, color: AppTheme.trafordOrange),
+                        ),
+                        placeholder: (_, __) => const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppTheme.trafordOrange,
+                            ),
+                          ),
                         ),
                       )
                     : const Center(

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/agro_service.dart';
@@ -206,9 +207,16 @@ class _AgroShopScreenState extends State<AgroShopScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: p.image != null
-                ? Image.network(p.image!,
-                    width: 64, height: 64, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _imgPlaceholder())
+                ? CachedNetworkImage(
+                    imageUrl: p.image!,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 200,
+                    filterQuality: FilterQuality.low,
+                    errorWidget: (_, __, ___) => _imgPlaceholder(),
+                    placeholder: (_, __) => _imgPlaceholder(),
+                  )
                 : _imgPlaceholder(),
           ),
           const SizedBox(width: 12),
